@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum ActionType {
+  BOOKING_CREATED
+  BOOKING_UPDATED
+  BOOKING_CANCELLED
+  ROOM_CREATED
+  ROOM_UPDATED
+}
+
+enum EntityType {
+  USER
+  ROOM
+  BOOKING
+}
+
+enum RoomStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+model User {
+  userId      String    @id @default(uuid())
+  firstName   String
+  lastName    String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(EMPLOYEE)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  bookings    Booking[]
+  auditLogs  AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Room {
+  roomId      String    @id @default(uuid())
+  name         String
+  capacity     Int
+  floor        Int
+  building     String
+  description  String?
+  equipments   String[]
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  status RoomStatus @default(ACTIVE)
+
+  bookings     Booking[]
+
+  @@index([building, floor])
+  @@index([capacity])
+  @@index([status])
+}
+
+model Booking {
+  bookingId   String        @id @default(uuid())
+  userId      String
+  roomId      String
+  startTime   DateTime
+  endTime     DateTime
+  purpose     String
+  status      BookingStatus @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  user         User          @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  room         Room          @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([roomId])
+  @@index([startTime, endTime])
+  @@index([status])
+  @@index([roomId, startTime, endTime])
+}
+
+model AuditLog {
+  logId       String      @id @default(uuid())
+  userId      String?
+  action       ActionType
+  entityType  EntityType
+  entityId    String?
+  details      Json?
+  createdAt   DateTime    @default(now())
+
+  user         User?       @relation(fields: [userId], references: [userId], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
