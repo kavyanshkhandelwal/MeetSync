@@ -1,0 +1,1 @@
+export { bookingCancellationMail } from './bookingMail';

@@ -1,72 +1,63 @@
-import { BookingStatus, Prisma } from '@prisma/client';
+import { Prisma, RoomStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
+import {
+  ANALYTICS_BOOKING_STATUSES,
+  incrementUtcDayCounts,
+  incrementUtcHourBuckets,
+  isRoomAvailableForUtilization,
+  mergedClippedHours,
+  rangeHours,
+  utilizationPercent,
+} from '../domain/analytics.math';
+
+export type AnalyticsRange = {
+  start: Date;
+  end: Date;
+};
+
+/** Overlap (not containment): booking.start < rangeEnd AND booking.end > rangeStart. */
+export function analyticsUsageWhere(range: AnalyticsRange): Prisma.BookingWhereInput {
+  return {
+    status: { in: ANALYTICS_BOOKING_STATUSES },
+    startTime: { lt: range.end },
+    endTime: { gt: range.start },
+  };
+}
 
 export class AnalyticsRepository {
-  /**
-   * Get total bookings count with optional filters
-   */
-  async getTotalBookings(startDate?: Date, endDate?: Date): Promise<number> {
-    const where: Prisma.BookingWhereInput = {
-      status: { not: BookingStatus.CANCELLED },
-    };
-
-    if (startDate || endDate) {
-      where.AND = [];
-      if (startDate) {
-        where.AND.push({ startTime: { gte: startDate } });
-      }
-      if (endDate) {
-        where.AND.push({ endTime: { lte: endDate } });
-      }
-    }
-
-    return prisma.booking.count({ where });
-  }
-
-  /**
-   * Get room utilization metrics
-   */
-  async getRoomUtilization(startDate?: Date, endDate?: Date): Promise<any[]> {
-    const where: Prisma.BookingWhereInput = {
-      status: { not: BookingStatus.CANCELLED },
-    };
-
-    if (startDate || endDate) {
-      where.AND = [];
-      if (startDate) {
-        where.AND.push({ startTime: { gte: startDate } });
-      }
-      if (endDate) {
-        where.AND.push({ endTime: { lte: endDate } });
-      }
-    }
-
-    // Get all rooms with their booking counts
-    const rooms = await prisma.room.findMany({
-      include: {
-        bookings: {
-          where,
-        },
+  async getUsageBookings(range: AnalyticsRange) {
+    return prisma.booking.findMany({
+      where: analyticsUsageWhere(range),
+      select: {
+        bookingId: true,
+        roomId: true,
+        startTime: true,
+        endTime: true,
+        status: true,
       },
     });
+  }
 
-    // Calculate utilization for each room
-    return rooms.map(room => {
-      const totalBookedHours = room.bookings.reduce((sum, booking) => {
-        const durationMs = booking.endTime.getTime() - booking.startTime.getTime();
-        return sum + durationMs / (1000 * 60 * 60); // Convert to hours
-      }, 0);
+  async getTotalBookings(range: AnalyticsRange): Promise<number> {
+    return prisma.booking.count({ where: analyticsUsageWhere(range) });
+  }
 
-      // If date range provided, calculate total possible hours in period
-      let totalPossibleHours = 0;
-      if (startDate && endDate) {
-        const durationMs = endDate.getTime() - startDate.getTime();
-        totalPossibleHours = durationMs / (1000 * 60 * 60);
-      }
+  async getRoomUtilization(range: AnalyticsRange) {
+    const [rooms, bookings] = await Promise.all([
+      prisma.room.findMany(),
+      this.getUsageBookings(range),
+    ]);
 
-      const utilizationRate = totalPossibleHours > 0 
-        ? (totalBookedHours / totalPossibleHours) * 100 
-        : 0;
+    const availableHours = rangeHours(range.start, range.end);
+
+    return rooms.map((room) => {
+      const roomBookings = bookings.filter((booking) => booking.roomId === room.roomId);
+      const bookedHours = mergedClippedHours(
+        roomBookings.map((booking) => ({ start: booking.startTime, end: booking.endTime })),
+        range.start,
+        range.end,
+      );
+      const roomAvailable = isRoomAvailableForUtilization(room.status) ? availableHours : 0;
 
       return {
         roomId: room.roomId,
@@ -74,204 +65,95 @@ export class AnalyticsRepository {
         capacity: room.capacity,
         building: room.building,
         floor: room.floor,
-        totalBookings: room.bookings.length,
-        totalBookedHours: parseFloat(totalBookedHours.toFixed(2)),
-        utilizationRate: parseFloat(utilizationRate.toFixed(2)),
+        status: room.status,
+        totalBookings: roomBookings.length,
+        totalBookedHours: parseFloat(bookedHours.toFixed(2)),
+        availableHours: parseFloat(roomAvailable.toFixed(2)),
+        utilizationRate: utilizationPercent(bookedHours, roomAvailable),
       };
     });
   }
 
-  /**
-   * Get peak booking hours
-   */
-  async getPeakHours(startDate?: Date, endDate?: Date): Promise<any[]> {
-    const where: Prisma.BookingWhereInput = {
-      status: { not: BookingStatus.CANCELLED },
-    };
-
-    if (startDate || endDate) {
-      where.AND = [];
-      if (startDate) {
-        where.AND.push({ startTime: { gte: startDate } });
-      }
-      if (endDate) {
-        where.AND.push({ endTime: { lte: endDate } });
-      }
-    }
-
-    const bookings = await prisma.booking.findMany({
-      where,
-      select: { startTime: true, endTime: true },
-    });
-
-    // Initialize hour buckets (0-23)
+  async getPeakHours(range: AnalyticsRange) {
+    const bookings = await this.getUsageBookings(range);
     const hourCounts = new Array(24).fill(0);
 
-    bookings.forEach(booking => {
-      let current = new Date(booking.startTime);
-      const end = new Date(booking.endTime);
-
-      while (current < end) {
-        const hour = current.getHours();
-        hourCounts[hour]++;
-
-        // Move to next hour
-        current.setHours(current.getHours() + 1);
-        current.setMinutes(0, 0, 0);
+    bookings.forEach((booking) => {
+      const clippedStart = new Date(Math.max(booking.startTime.getTime(), range.start.getTime()));
+      const clippedEnd = new Date(Math.min(booking.endTime.getTime(), range.end.getTime()));
+      if (clippedEnd > clippedStart) {
+        incrementUtcHourBuckets(hourCounts, clippedStart, clippedEnd);
       }
     });
 
-    // Format results
     return hourCounts.map((count, hour) => ({
       hour,
       count,
-      label: `${hour}:00`,
+      label: `${String(hour).padStart(2, '0')}:00 UTC`,
     }));
   }
 
-  /**
-   * Get most booked rooms
-   */
-  async getMostBookedRooms(
-    limit: number = 10,
-    startDate?: Date,
-    endDate?: Date
-  ): Promise<any[]> {
-    const where: Prisma.BookingWhereInput = {
-      status: { not: BookingStatus.CANCELLED },
-    };
-
-    if (startDate || endDate) {
-      where.AND = [];
-      if (startDate) {
-        where.AND.push({ startTime: { gte: startDate } });
-      }
-      if (endDate) {
-        where.AND.push({ endTime: { lte: endDate } });
-      }
-    }
-
-    // Group bookings by room and count
+  async getMostBookedRooms(limit: number, range: AnalyticsRange) {
     const roomBookings = await prisma.booking.groupBy({
       by: ['roomId'],
-      where,
-      _count: {
-        bookingId: true,
-      },
-      orderBy: {
-        _count: {
-          bookingId: 'desc',
-        },
-      },
+      where: analyticsUsageWhere(range),
+      _count: { bookingId: true },
+      orderBy: { _count: { bookingId: 'desc' } },
       take: limit,
     });
 
-    // Get room details
-    const roomIds = roomBookings.map(rb => rb.roomId);
     const rooms = await prisma.room.findMany({
-      where: {
-        roomId: { in: roomIds },
-      },
+      where: { roomId: { in: roomBookings.map((row) => row.roomId) } },
     });
 
-    // Combine data
-    return roomBookings.map(rb => {
-      const room = rooms.find(r => r.roomId === rb.roomId);
+    return roomBookings.map((row) => {
+      const room = rooms.find((item) => item.roomId === row.roomId);
       return {
-        roomId: rb.roomId,
+        roomId: row.roomId,
         roomName: room?.name || 'Unknown',
         capacity: room?.capacity || 0,
         building: room?.building || '',
         floor: room?.floor || 0,
-        totalBookings: rb._count.bookingId || 0,
+        totalBookings: row._count.bookingId || 0,
       };
     });
   }
 
-  /**
-   * Get comprehensive analytics dashboard data in one query batch
-   */
-  async getDashboardAnalytics(startDate?: Date, endDate?: Date): Promise<any> {
-    const where: Prisma.BookingWhereInput = {
-      status: { not: BookingStatus.CANCELLED },
-    };
-
-    if (startDate || endDate) {
-      where.AND = [];
-      if (startDate) {
-        where.AND.push({ startTime: { gte: startDate } });
-      }
-      if (endDate) {
-        where.AND.push({ endTime: { lte: endDate } });
-      }
-    }
-
-    // Run all queries in parallel for optimization
-    const [
-      totalBookings,
-      totalRooms,
-      totalActiveRooms,
-      bookings,
-      mostBooked,
-    ] = await Promise.all([
-      prisma.booking.count({ where }),
-      prisma.room.count(),
-      prisma.room.count({ where: { status: 'ACTIVE' } }),
-      prisma.booking.findMany({
-        where,
-        select: { startTime: true, endTime: true, roomId: true },
-      }),
-      prisma.booking.groupBy({
-        by: ['roomId'],
-        where,
-        _count: { bookingId: true },
-        orderBy: { _count: { bookingId: 'desc' } },
-        take: 5,
-      }),
-    ]);
-
-    // Calculate peak hours
-    const hourCounts = new Array(24).fill(0);
-    bookings.forEach(booking => {
-      let current = new Date(booking.startTime);
-      const end = new Date(booking.endTime);
-
-      while (current < end) {
-        hourCounts[current.getHours()]++;
-        current.setHours(current.getHours() + 1);
-        current.setMinutes(0, 0, 0);
+  async getBookingsByDay(range: AnalyticsRange) {
+    const bookings = await this.getUsageBookings(range);
+    const counts = new Map<string, number>();
+    bookings.forEach((booking) => {
+      const clippedStart = new Date(Math.max(booking.startTime.getTime(), range.start.getTime()));
+      const clippedEnd = new Date(Math.min(booking.endTime.getTime(), range.end.getTime()));
+      if (clippedEnd > clippedStart) {
+        incrementUtcDayCounts(counts, clippedStart, clippedEnd);
       }
     });
+    return [...counts.entries()]
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
 
-    const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
-
-    // Get top rooms details
-    const topRoomIds = mostBooked.map(rb => rb.roomId); 
-    const topRooms = await prisma.room.findMany({
-      where: { roomId: { in: topRoomIds } },  
-    });
-
-    const mostBookedRooms = mostBooked.map(rb => {
-      const room = topRooms.find(r => r.roomId === rb.roomId);
-      return {
-        roomId: rb.roomId,
-        roomName: room?.name || 'Unknown',
-        totalBookings: rb._count.bookingId || 0,
-      };
-    });
+  async getDashboardAnalytics(range: AnalyticsRange) {
+    const [totalBookings, totalRooms, totalActiveRooms, roomUtilization, hourlyBreakdown, mostBookedRooms, bookingsByDay] =
+      await Promise.all([
+        this.getTotalBookings(range),
+        prisma.room.count(),
+        prisma.room.count({ where: { status: RoomStatus.ACTIVE } }),
+        this.getRoomUtilization(range),
+        this.getPeakHours(range),
+        this.getMostBookedRooms(5, range),
+        this.getBookingsByDay(range),
+      ]);
 
     return {
       totalBookings,
       totalRooms,
       totalActiveRooms,
-      peakHour,
-      peakHourLabel: `${peakHour}:00`,
-      peakHourBookings: hourCounts[peakHour],
+      roomUtilization,
+      hourlyBreakdown,
       mostBookedRooms,
-      hourlyBreakdown: hourCounts.map((count, hour) => ({
-        hour,
-        count,
-      })),
+      bookingsByDay,
     };
   }
 }

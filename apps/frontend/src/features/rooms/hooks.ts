@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createRoom, deleteRoom, getRoomById, getRooms, updateRoom } from './api';
-import { CreateRoomInput, UpdateRoomInput, GetRoomsQuery } from './types';
+import { createRoom, deleteRoom, getRoomAvailability, getRoomById, getRooms, updateRoom } from './api';
+import { CreateRoomInput, UpdateRoomInput, GetRoomsQuery, RoomAvailabilityQuery } from './types';
 
 export const useRooms = (query?: GetRoomsQuery) => {
   return useQuery({
@@ -34,6 +34,7 @@ export const useUpdateRoom = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       queryClient.invalidateQueries({ queryKey: ['room', variables.id] });
+      queryClient.invalidateQueries({ queryKey: ['room-availability'] });
     },
   });
 };
@@ -45,5 +46,13 @@ export const useDeleteRoom = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
     },
+  });
+};
+
+export const useRoomAvailability = (id: string, query?: RoomAvailabilityQuery) => {
+  return useQuery({
+    queryKey: ['room-availability', id, query],
+    queryFn: () => getRoomAvailability(id, query as RoomAvailabilityQuery),
+    enabled: !!id && !!query?.startDate && !!query?.endDate,
   });
 };

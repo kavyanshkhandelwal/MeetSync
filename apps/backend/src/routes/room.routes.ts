@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { RoomController } from '../controllers/room.controller';
 import { authenticate, authorizeRoles, validate, RequestPart } from '../middlewares';
 import { Role } from '@prisma/client';
-import { CreateRoomSchema, UpdateRoomSchema, RoomIdSchema, GetRoomsQuerySchema } from '../validators/room.validator';
+import {
+  CreateRoomSchema,
+  UpdateRoomSchema,
+  RoomIdSchema,
+  GetRoomsQuerySchema,
+  RoomAvailabilityQuerySchema,
+} from '../validators/room.validator';
 
 const router = Router();
 const roomController = new RoomController();
@@ -13,6 +19,13 @@ router.get(
   authenticate,
   validate(GetRoomsQuerySchema, RequestPart.Query),
   roomController.getRooms,
+);
+router.get(
+  '/:id/availability',
+  authenticate,
+  validate(RoomIdSchema, RequestPart.Params),
+  validate(RoomAvailabilityQuerySchema, RequestPart.Query),
+  roomController.getAvailability,
 );
 router.get(
   '/:id',

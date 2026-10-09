@@ -13,31 +13,47 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:socket": "vitest run tests/integration/socket",
+    "test:email": "vitest run tests/unit/email tests/integration/email",
+    "test:ai": "vitest run tests/unit/ai tests/integration/ai",
+    "test:status": "vitest run tests/unit/bookings/bookingStatus.machine.test.ts tests/integration/bookings/booking.service.status.test.ts",
+    "worker": "tsx src/workers/reminder.worker.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.0.0",
     "bcrypt": "^5.1.1",
+    "bullmq": "^4.18.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.19.0",
     "express-validator": "^7.1.0",
     "helmet": "^7.1.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^9.0.0",
+    "openai": "^6.49.0",
     "socket.io": "^4.8.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.0.0",
     "@types/nodemailer": "^8.0.1",
+    "@vitest/coverage-v8": "^3.2.4",
     "prisma": "^5.0.0",
+    "socket.io-client": "^4.8.0",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^3.2.4"
   }
 }

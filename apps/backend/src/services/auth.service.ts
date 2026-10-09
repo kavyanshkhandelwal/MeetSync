@@ -13,7 +13,6 @@ export interface RegisterInput {
   lastName: string;
   email: string;
   password: string;
-  role?: Role;
 }
 
 export interface LoginInput {
@@ -54,7 +53,7 @@ export class AuthService {
       lastName: input.lastName,
       email: input.email,
       passwordHash,
-      role: input.role || Role.EMPLOYEE,
+      role: Role.EMPLOYEE,
     });
 
     // Generate JWT
@@ -64,7 +63,6 @@ export class AuthService {
       role: user.role,
     };
     const accessToken = generateAccessToken(payload);
-    console.log('Generated Access Token:', accessToken); // Debugging line
     // Omit password hash from response
     const { passwordHash: _, ...userWithoutPassword } = user;
 

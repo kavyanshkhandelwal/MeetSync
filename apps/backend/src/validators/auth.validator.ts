@@ -33,6 +33,11 @@ export const registerValidator = [
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain at least one uppercase letter, one lowercase letter, and one number'),
 
+  body('role')
+    .not()
+    .exists()
+    .withMessage('Role cannot be specified during registration'),
+
   (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {

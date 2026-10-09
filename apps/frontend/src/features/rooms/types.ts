@@ -16,9 +16,34 @@ export type GetRoomsQuery = {
   search?: string;
   building?: string;
   floor?: number;
+  minCapacity?: number;
+  maxCapacity?: number;
+  equipment?: string;
   status?: string;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
+};
+
+export type RoomAvailabilityQuery = {
+  startDate: string;
+  endDate: string;
+};
+
+export type OccupyingBooking = {
+  bookingId: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  purpose: string;
+};
+
+export type RoomAvailability = {
+  roomId: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
+  bookable: boolean;
+  startDate: string;
+  endDate: string;
+  bookings: OccupyingBooking[];
 };
 
 export type PaginatedRoomsResponse = {

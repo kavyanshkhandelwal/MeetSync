@@ -1,6 +1,13 @@
 import { apiClient } from '../../lib/axios';
 import { Room } from '../../types';
-import { CreateRoomInput, UpdateRoomInput, GetRoomsQuery, PaginatedRoomsResponse } from './types';
+import {
+  CreateRoomInput,
+  UpdateRoomInput,
+  GetRoomsQuery,
+  PaginatedRoomsResponse,
+  RoomAvailability,
+  RoomAvailabilityQuery,
+} from './types';
 
 export const getRooms = async (query?: GetRoomsQuery): Promise<PaginatedRoomsResponse> => {
   const response = await apiClient.get('/rooms', { params: query });
@@ -30,4 +37,12 @@ export const updateRoom = async ({
 
 export const deleteRoom = async (id: string): Promise<void> => {
   await apiClient.delete(`/rooms/${id}`);
+};
+
+export const getRoomAvailability = async (
+  id: string,
+  query: RoomAvailabilityQuery,
+): Promise<RoomAvailability> => {
+  const response = await apiClient.get(`/rooms/${id}/availability`, { params: query });
+  return response.data.data;
 };

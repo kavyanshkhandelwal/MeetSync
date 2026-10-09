@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,9 @@ import {
 } from '@/components/ui/dialog';
 import { useCreateBooking } from '@/features/bookings/hooks';
 import { useRooms } from '@/features/rooms/hooks';
+import { bookingConflictMessage } from '@/features/bookings/errors';
+import { handleApiError } from '@/lib/handle-api-error';
+import { toOffsetIso } from '@/lib/datetime';
 
 const bookingSchema = z.object({
   roomId: z.string().min(1, 'Please select a room'),
@@ -55,6 +58,10 @@ interface BookingModalProps {
   onOpenChange: (open: boolean) => void;
   defaultRoomId?: string;
   defaultDate?: Date;
+  defaultStartTime?: string;
+  defaultEndTime?: string;
+  defaultPurpose?: string;
+  onBooked?: () => void;
 }
 
 export function BookingModal({
@@ -62,60 +69,70 @@ export function BookingModal({
   onOpenChange,
   defaultRoomId,
   defaultDate,
+  defaultStartTime,
+  defaultEndTime,
+  defaultPurpose,
+  onBooked,
 }: BookingModalProps) {
   const createBooking = useCreateBooking();
-  const { data: rooms } = useRooms({ limit: 100 });
-  
+  const { data: rooms } = useRooms({ limit: 100, status: 'ACTIVE' });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const defaultValues: Partial<BookingFormValues> = {
     roomId: defaultRoomId,
-    startTime: defaultDate ? defaultDate.toISOString().slice(0, 16) : '',
-    endTime: defaultDate ? new Date(defaultDate.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16) : '',
+    startTime: defaultStartTime
+      || (defaultDate ? defaultDate.toISOString().slice(0, 16) : ''),
+    endTime: defaultEndTime
+      || (defaultDate ? new Date(defaultDate.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16) : ''),
+    purpose: defaultPurpose || '',
   };
 
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
     defaultValues,
   });
 
-  const onSubmit = async (data: BookingFormValues) => {
-    try {
-      // Convert datetime-local strings to ISO-8601 with timezone offset
-      const formatDateTime = (dateTimeStr: string) => {
-        if (!dateTimeStr) return '';
-        const date = new Date(dateTimeStr);
-        // Get timezone offset in minutes
-        const offset = date.getTimezoneOffset();
-        // Convert to hours and minutes
-        const offsetHours = Math.abs(Math.floor(offset / 60));
-        const offsetMinutes = Math.abs(offset % 60);
-        const offsetSign = offset <= 0 ? '+' : '-';
-        // Format: YYYY-MM-DDTHH:mm:ss+HH:mm
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
-        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetStr}`;
-      };
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    reset({
+      roomId: defaultRoomId || '',
+      startTime: defaultStartTime
+        || (defaultDate ? defaultDate.toISOString().slice(0, 16) : ''),
+      endTime: defaultEndTime
+        || (defaultDate ? new Date(defaultDate.getTime() + 60 * 60 * 1000).toISOString().slice(0, 16) : ''),
+      purpose: defaultPurpose || '',
+    });
+    setErrorMessage(null);
+  }, [open, defaultRoomId, defaultDate, defaultStartTime, defaultEndTime, defaultPurpose, reset]);
 
+  const onSubmit = async (data: BookingFormValues) => {
+    setErrorMessage(null);
+    try {
       const payload = {
         ...data,
-        startTime: formatDateTime(data.startTime),
-        endTime: formatDateTime(data.endTime),
+        startTime: toOffsetIso(new Date(data.startTime)),
+        endTime: toOffsetIso(new Date(data.endTime)),
       };
 
       await createBooking.mutateAsync(payload);
       onOpenChange(false);
       reset();
+      onBooked?.();
     } catch (err) {
-      console.error('Error creating booking:', err);
+      const conflict = bookingConflictMessage(err);
+      if (conflict) {
+        setErrorMessage(conflict);
+        return;
+      }
+      handleApiError(err, setError, setErrorMessage);
     }
   };
 
@@ -130,6 +147,9 @@ export function BookingModal({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="grid gap-4 py-4">
+            {errorMessage && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">{errorMessage}</div>
+            )}
             {/* Room Selection */}
             <div className="space-y-2">
               <Label htmlFor="roomId">Room</Label>

@@ -1,7 +1,57 @@
-import { Room, Prisma } from '@prisma/client';
+import { Room, Prisma, RoomStatus } from '@prisma/client';
 import { prisma } from '../config/prisma';
 import { BaseRepository } from './base.repository';
 import { GetRoomsQueryInput } from '../validators/room.validator';
+
+export type RoomCandidateFilters = {
+  search?: string;
+  building?: string;
+  floor?: number;
+  minCapacity?: number;
+  maxCapacity?: number;
+  equipment?: string;
+  equipments?: string[];
+  status?: RoomStatus;
+};
+
+export function buildRoomWhere(query: RoomCandidateFilters): Prisma.RoomWhereInput {
+  const where: Prisma.RoomWhereInput = {};
+
+  if (query.search) {
+    where.OR = [
+      { name: { contains: query.search, mode: 'insensitive' } },
+      { description: { contains: query.search, mode: 'insensitive' } },
+      { building: { contains: query.search, mode: 'insensitive' } },
+    ];
+  }
+
+  if (query.building) {
+    where.building = { equals: query.building, mode: 'insensitive' };
+  }
+
+  if (query.floor !== undefined) {
+    where.floor = query.floor;
+  }
+
+  if (query.minCapacity !== undefined || query.maxCapacity !== undefined) {
+    where.capacity = {
+      ...(query.minCapacity !== undefined ? { gte: query.minCapacity } : {}),
+      ...(query.maxCapacity !== undefined ? { lte: query.maxCapacity } : {}),
+    };
+  }
+
+  if (query.equipments && query.equipments.length > 0) {
+    where.equipments = { hasEvery: query.equipments };
+  } else if (query.equipment) {
+    where.equipments = { has: query.equipment };
+  }
+
+  if (query.status) {
+    where.status = query.status;
+  }
+
+  return where;
+}
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -18,48 +68,16 @@ export class RoomRepository extends BaseRepository<Room> {
     return prisma.room.findMany();
   }
 
+  async findMatching(filters: RoomCandidateFilters): Promise<Room[]> {
+    return prisma.room.findMany({
+      where: buildRoomWhere(filters),
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async findMany(query: GetRoomsQueryInput): Promise<PaginatedResult<Room>> {
-    const { 
-      page, 
-      limit, 
-      search, 
-      building, 
-      floor, 
-      minCapacity, 
-      maxCapacity, 
-      status,
-      sortBy,
-      sortOrder,
-    } = query;
-    
-    const where: Prisma.RoomWhereInput = {};
-    
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { building: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-    
-    if (building) {
-      where.building = { equals: building, mode: 'insensitive' };
-    }
-    
-    if (floor !== undefined) {
-      where.floor = floor;
-    }
-    
-    if (minCapacity !== undefined || maxCapacity !== undefined) {
-      where.capacity = {
-        ...(minCapacity !== undefined ? { gte: minCapacity } : {}),
-        ...(maxCapacity !== undefined ? { lte: maxCapacity } : {}),
-      };
-    }
-    
-    if (status) {
-      where.status = status;
-    }
+    const { page, limit, sortBy, sortOrder, ...filters } = query;
+    const where = buildRoomWhere(filters);
 
     const skip = (page - 1) * limit;
     const orderBy: Prisma.RoomOrderByWithRelationInput = {

@@ -25,7 +25,6 @@ const registerSchema = z.object({
   lastName: z.string().min(2, 'Last name is required'),
   email: z.string().email('Please enter a valid email'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['ADMIN', 'EMPLOYEE']).optional().default('EMPLOYEE'),
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;

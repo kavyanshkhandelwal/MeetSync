@@ -31,7 +31,10 @@ const statusLabels: Record<string, string> = {
 export default function MyBookingsPage() {
   const router = useRouter();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
-  const { data: bookingsData, isLoading: bookingsLoading } = useBookings();
+  const { data: bookingsData, isLoading: bookingsLoading } = useBookings({
+    page: 1,
+    limit: 100,
+  });
   const { isCollapsed, toggleSidebar } = useSidebar();
   
   const [user, setUser] = useState<any>(null);

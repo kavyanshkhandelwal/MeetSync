@@ -1,17 +1,27 @@
 export interface Period {
-  startDate?: string;
-  endDate?: string;
+  startDate: string;
+  endDate: string;
+  timeZone: string;
+}
+
+export interface DailyCount {
+  date: string;
+  count: number;
 }
 
 export interface DashboardAnalytics {
   totalBookings: number;
   totalRooms: number;
   totalActiveRooms: number;
-  peakHour: number;
-  peakHourLabel: string;
+  averageUtilization: number;
+  peakHour: number | null;
+  peakHourLabel: string | null;
   peakHourBookings: number;
   mostBookedRooms: MostBookedRoom[];
   hourlyBreakdown: HourlyData[];
+  roomUtilization: RoomUtilization[];
+  bookingsByDay: DailyCount[];
+  period: Period;
 }
 
 export interface MostBookedRoom {
@@ -23,6 +33,7 @@ export interface MostBookedRoom {
 export interface HourlyData {
   hour: number;
   count: number;
+  label?: string;
 }
 
 export interface TotalBookingsResponse {
@@ -42,14 +53,16 @@ export interface RoomUtilization {
   capacity: number;
   building: string;
   floor: number;
+  status?: string;
   totalBookings: number;
   totalBookedHours: number;
+  availableHours?: number;
   utilizationRate: number;
 }
 
 export interface PeakHoursResponse {
-  peakHour: number;
-  peakHourLabel: string;
+  peakHour: number | null;
+  peakHourLabel: string | null;
   peakHourBookings: number;
   hourlyBreakdown: HourlyData[];
   period: Period;
@@ -57,6 +70,7 @@ export interface PeakHoursResponse {
 
 export interface MostBookedRoomsResponse {
   mostBookedRooms: RoomBookings[];
+  ranking: 'booking_count';
   period: Period;
 }
 
@@ -68,3 +82,8 @@ export interface RoomBookings {
   floor: number;
   totalBookings: number;
 }
+
+export type AnalyticsRangeParams = {
+  startDate: string;
+  endDate: string;
+};

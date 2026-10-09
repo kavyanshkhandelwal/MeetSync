@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ZodObject, ZodSchema, ZodRawShape, ZodError } from 'zod';
+import { ZodSchema, ZodError } from 'zod';
 import { BadRequestError } from '../utils/errors';
 
 export enum RequestPart {
@@ -9,7 +9,7 @@ export enum RequestPart {
 } 
 
 export function validate(
-  schema: ZodObject<ZodRawShape>,
+  schema: ZodSchema,
   part: RequestPart = RequestPart.Body,
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {

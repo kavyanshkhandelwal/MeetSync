@@ -6,26 +6,30 @@ import { Header } from '@/components/dashboard/Header';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { ProfileForm } from '@/components/profile/profile-form';
 import { useSidebar } from '@/hooks/use-sidebar';
+import { useCurrentUser } from '@/features/auth/hooks';
 
 export default function ProfilePage() {
   const router = useRouter();
   const { isCollapsed, toggleSidebar } = useSidebar();
-  const [user, setUser] = useState<any>(null);
+  const { data: currentUser, isLoading } = useCurrentUser();
+  const [storedUser, setStoredUser] = useState<any>(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+    const stored = localStorage.getItem('user');
+    if (stored) {
       try {
-        setUser(JSON.parse(storedUser));
+        setStoredUser(JSON.parse(stored));
       } catch (e) {
         router.push('/login');
       }
-    } else {
+    } else if (!currentUser && !isLoading) {
       router.push('/login');
     }
-  }, [router]);
+  }, [currentUser, isLoading, router]);
 
-  if (!user) {
+  const user = currentUser || storedUser;
+
+  if (isLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-lg">Loading...</div>
@@ -51,7 +55,7 @@ export default function ProfilePage() {
                 Manage your account information
               </p>
             </div>
-            <ProfileForm user={user} />
+            <ProfileForm key={`${user.firstName}-${user.lastName}`} user={user} />
           </div>
         </main>
       </div>

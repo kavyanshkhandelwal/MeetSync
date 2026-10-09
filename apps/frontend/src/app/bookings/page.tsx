@@ -12,10 +12,13 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { BookingModal } from '@/components/bookings/BookingModal';
-import { useBookings } from '@/features/bookings/hooks';
+import { EditBookingModal } from '@/components/bookings/EditBookingModal';
+import { useBookingsInRange } from '@/features/bookings/hooks';
 import { useCurrentUser } from '@/features/auth/hooks';
-import type { EventInput } from '@fullcalendar/core';
+import type { DatesSetArg, EventClickArg, EventInput } from '@fullcalendar/core';
 import { useSidebar } from '@/hooks/use-sidebar';
+import { toOffsetIso } from '@/lib/datetime';
+import type { Booking } from '@/types';
 
 const statusColors: Record<string, string> = {
   PENDING: '#fbbf24',
@@ -27,13 +30,20 @@ const statusColors: Record<string, string> = {
 export default function BookingsPage() {
   const router = useRouter();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
-  const { data: bookingsData, isLoading: bookingsLoading } = useBookings();
   const { isCollapsed, toggleSidebar } = useSidebar();
-  
+
   const [user, setUser] = useState<any>(null);
+  const [range, setRange] = useState<{ startDate?: string; endDate?: string }>({});
+  const { data: bookingsData, isLoading: bookingsLoading } = useBookingsInRange(
+    range.startDate,
+    range.endDate,
+  );
   const [events, setEvents] = useState<EventInput[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const calendarRef = useRef<FullCalendar>(null);
 
   useEffect(() => {
@@ -49,25 +59,54 @@ export default function BookingsPage() {
     }
   }, [currentUser, userLoading, router]);
 
-  // Transform bookings to FullCalendar events
   useEffect(() => {
     if (bookingsData?.data) {
       const newEvents: EventInput[] = bookingsData.data.map((booking: any) => ({
         id: booking.bookingId,
-        title: `${booking.room?.name || 'Room'} - ${booking.user?.firstName || ''}`,
+        title: `${booking.room?.name || 'Room'} · ${booking.purpose} · ${booking.status}`,
         start: booking.startTime,
         end: booking.endTime,
         backgroundColor: statusColors[booking.status] || '#3b82f6',
         borderColor: statusColors[booking.status] || '#3b82f6',
         extendedProps: {
+          booking,
           roomId: booking.roomId,
           userId: booking.userId,
           status: booking.status,
+          purpose: booking.purpose,
         },
       }));
       setEvents(newEvents);
     }
   }, [bookingsData]);
+
+  const handleDatesSet = (info: DatesSetArg) => {
+    setRange({
+      startDate: toOffsetIso(info.start),
+      endDate: toOffsetIso(info.end),
+    });
+  };
+
+  const canManageBooking = (booking: Booking) => {
+    if (!user) return false;
+    return user.role === 'ADMIN' || booking.userId === user.userId;
+  };
+
+  const handleEventClick = (info: EventClickArg) => {
+    const booking = info.event.extendedProps.booking as Booking | undefined;
+    if (!booking) return;
+    if (!canManageBooking(booking)) {
+      setActionError('You can only edit or cancel your own bookings.');
+      return;
+    }
+    if (booking.status === 'CANCELLED' || booking.status === 'COMPLETED') {
+      setActionError('This booking can no longer be changed.');
+      return;
+    }
+    setActionError(null);
+    setSelectedBooking(booking);
+    setIsEditOpen(true);
+  };
 
   if (userLoading || !user) {
     return (
@@ -102,6 +141,10 @@ export default function BookingsPage() {
                 New Booking
               </Button>
             </div>
+
+            {actionError && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">{actionError}</div>
+            )}
 
             <Card className="overflow-hidden">
               <CardContent className="p-0">
@@ -158,6 +201,8 @@ export default function BookingsPage() {
                       selectable={true}
                       weekends={true}
                       height="auto"
+                      datesSet={handleDatesSet}
+                      eventClick={handleEventClick}
                       select={(info) => {
                         setSelectedDate(info.start);
                         setIsModalOpen(true);
@@ -175,6 +220,16 @@ export default function BookingsPage() {
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         defaultDate={selectedDate}
+      />
+      <EditBookingModal
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        booking={selectedBooking}
+        allowCancel
+        onCancelled={() => {
+          setSelectedBooking(null);
+          setIsEditOpen(false);
+        }}
       />
     </div>
   );

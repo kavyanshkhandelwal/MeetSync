@@ -6,38 +6,67 @@ import {
   getPeakHours,
   getMostBookedRooms,
 } from './api';
+import { AnalyticsRangeParams } from './types';
 
-export function useDashboardAnalytics(params?: { startDate?: string; endDate?: string }) {
+type AnalyticsQueryOptions = {
+  enabled?: boolean;
+};
+
+function rangeEnabled(params?: Partial<AnalyticsRangeParams>, enabled = true): boolean {
+  return Boolean(enabled && params?.startDate && params?.endDate);
+}
+
+export function useDashboardAnalytics(
+  params?: Partial<AnalyticsRangeParams>,
+  options?: AnalyticsQueryOptions,
+) {
   return useQuery({
     queryKey: ['analytics', 'dashboard', params],
-    queryFn: () => getDashboardAnalytics(params),
+    queryFn: () => getDashboardAnalytics(params as AnalyticsRangeParams),
+    enabled: rangeEnabled(params, options?.enabled),
   });
 }
 
-export function useTotalBookings(params?: { startDate?: string; endDate?: string }) {
+export function useTotalBookings(
+  params?: Partial<AnalyticsRangeParams>,
+  options?: AnalyticsQueryOptions,
+) {
   return useQuery({
     queryKey: ['analytics', 'totalBookings', params],
-    queryFn: () => getTotalBookings(params),
+    queryFn: () => getTotalBookings(params as AnalyticsRangeParams),
+    enabled: rangeEnabled(params, options?.enabled),
   });
 }
 
-export function useRoomUtilization(params?: { startDate?: string; endDate?: string }) {
+export function useRoomUtilization(
+  params?: Partial<AnalyticsRangeParams>,
+  options?: AnalyticsQueryOptions,
+) {
   return useQuery({
     queryKey: ['analytics', 'roomUtilization', params],
-    queryFn: () => getRoomUtilization(params),
+    queryFn: () => getRoomUtilization(params as AnalyticsRangeParams),
+    enabled: rangeEnabled(params, options?.enabled),
   });
 }
 
-export function usePeakHours(params?: { startDate?: string; endDate?: string }) {
+export function usePeakHours(
+  params?: Partial<AnalyticsRangeParams>,
+  options?: AnalyticsQueryOptions,
+) {
   return useQuery({
     queryKey: ['analytics', 'peakHours', params],
-    queryFn: () => getPeakHours(params),
+    queryFn: () => getPeakHours(params as AnalyticsRangeParams),
+    enabled: rangeEnabled(params, options?.enabled),
   });
 }
 
-export function useMostBookedRooms(params?: { limit?: number; startDate?: string; endDate?: string }) {
+export function useMostBookedRooms(
+  params?: Partial<AnalyticsRangeParams> & { limit?: number },
+  options?: AnalyticsQueryOptions,
+) {
   return useQuery({
     queryKey: ['analytics', 'mostBookedRooms', params],
-    queryFn: () => getMostBookedRooms(params),
+    queryFn: () => getMostBookedRooms(params as AnalyticsRangeParams & { limit?: number }),
+    enabled: rangeEnabled(params, options?.enabled),
   });
 }

@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useLogout } from '@/features/auth/hooks';
 
 const navItems = [
   {
@@ -57,6 +58,19 @@ const navItems = [
     group: 'admin',
     adminOnly: true,
   },
+  {
+    title: 'Audit logs',
+    href: '/audit',
+    icon: Clock,
+    group: 'admin',
+    adminOnly: true,
+  },
+  {
+    title: 'AI recommend',
+    href: '/ai',
+    icon: Building2,
+    group: 'main',
+  },
 ];
 
 export function Sidebar({
@@ -71,6 +85,12 @@ export function Sidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
+  const { logout } = useLogout();
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = '/login';
+  };
 
   const filteredNavItems = navItems.filter(
     (item) => !item.adminOnly || userRole === 'ADMIN'
@@ -226,10 +246,7 @@ export function Sidebar({
                 <Button
                   variant="ghost"
                   className="h-10 w-10 p-0 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 mx-auto"
-                  onClick={() => {
-                    localStorage.removeItem('user');
-                    window.location.href = '/login';
-                  }}
+                  onClick={handleLogout}
                 >
                   <LogOut className="h-5 w-5" />
                 </Button>
@@ -243,10 +260,7 @@ export function Sidebar({
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 h-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={() => {
-              localStorage.removeItem('user');
-              window.location.href = '/login';
-            }}
+            onClick={handleLogout}
           >
             <LogOut className="h-5 w-5 flex-shrink-0" />
             <span>Logout</span>

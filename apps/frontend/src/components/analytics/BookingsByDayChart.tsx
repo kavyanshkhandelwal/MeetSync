@@ -11,24 +11,14 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Booking } from '@/types';
+import { DailyCount } from '@/features/analytics/types';
 
 interface BookingsByDayChartProps {
-  bookings: Booking[];
+  bookingsByDay: DailyCount[];
 }
 
-export function BookingsByDayChart({ bookings }: BookingsByDayChartProps) {
-  // Aggregate bookings by day
-  const bookingsByDay = bookings.reduce((acc, booking) => {
-    const date = new Date(booking.startTime).toLocaleDateString();
-    acc[date] = (acc[date] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Convert to array and sort by date
-  const data = Object.entries(bookingsByDay)
-    .map(([date, count]) => ({ date, count }))
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+export function BookingsByDayChart({ bookingsByDay }: BookingsByDayChartProps) {
+  const data = bookingsByDay;
 
   return (
     <Card className="col-span-1 lg:col-span-2">
@@ -36,6 +26,11 @@ export function BookingsByDayChart({ bookings }: BookingsByDayChartProps) {
         <CardTitle>Bookings by Day</CardTitle>
       </CardHeader>
       <CardContent>
+        {data.length === 0 ? (
+          <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+            No bookings in this date range.
+          </div>
+        ) : (
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
@@ -69,6 +64,7 @@ export function BookingsByDayChart({ bookings }: BookingsByDayChartProps) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+        )}
       </CardContent>
     </Card>
   );

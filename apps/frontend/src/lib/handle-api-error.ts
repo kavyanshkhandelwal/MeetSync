@@ -6,7 +6,8 @@ interface ApiError {
       message?: string;
       errors?: Array<{
         path: string;
-        msg: string;
+        msg?: string;
+        message?: string;
       }>;
     };
   };
@@ -28,7 +29,7 @@ export function handleApiError<T extends FieldValues>(
       const fieldName = fieldError.path as Path<T>;
       setError(fieldName, {
         type: 'server',
-        message: fieldError.msg,
+        message: fieldError.msg || fieldError.message,
       });
     });
     

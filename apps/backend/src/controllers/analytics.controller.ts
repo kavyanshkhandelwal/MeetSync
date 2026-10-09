@@ -5,9 +5,6 @@ import { ResponseUtil } from '../utils/response';
 const analyticsService = new AnalyticsService();
 
 export class AnalyticsController {
-  /**
-   * Get comprehensive dashboard analytics
-   */
   async getDashboard(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
@@ -18,9 +15,6 @@ export class AnalyticsController {
     }
   }
 
-  /**
-   * Get total bookings count
-   */
   async getTotalBookings(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
@@ -31,9 +25,6 @@ export class AnalyticsController {
     }
   }
 
-  /**
-   * Get room utilization data
-   */
   async getRoomUtilization(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
@@ -44,9 +35,6 @@ export class AnalyticsController {
     }
   }
 
-  /**
-   * Get peak booking hours
-   */
   async getPeakHours(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
@@ -57,15 +45,12 @@ export class AnalyticsController {
     }
   }
 
-  /**
-   * Get most booked rooms
-   */
   async getMostBookedRooms(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { limit, startDate, endDate } = req.query as { 
-        limit?: string; 
-        startDate?: string; 
-        endDate?: string 
+      const { limit, startDate, endDate } = req.query as {
+        limit?: string;
+        startDate?: string;
+        endDate?: string;
       };
       const limitNum = limit ? parseInt(limit, 10) : undefined;
       const result = await analyticsService.getMostBookedRooms(limitNum, startDate, endDate);

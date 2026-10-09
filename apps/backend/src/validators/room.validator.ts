@@ -28,13 +28,29 @@ export const GetRoomsQuerySchema = z.object({
   floor: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined).pipe(z.number().int().optional()),
   minCapacity: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined).pipe(z.number().int().min(1).optional()),
   maxCapacity: z.string().optional().transform((val) => val ? parseInt(val, 10) : undefined).pipe(z.number().int().min(1).optional()),
+  equipment: z.string().trim().optional(),
   status: z.nativeEnum(RoomStatus).optional(),
   sortBy: SortableFields.default('createdAt'),
   sortOrder: SortOrder.default('desc'),
 });
 
+export const RoomAvailabilityQuerySchema = z.object({
+  startDate: z
+    .string()
+    .datetime({ offset: true })
+    .transform((val) => new Date(val)),
+  endDate: z
+    .string()
+    .datetime({ offset: true })
+    .transform((val) => new Date(val)),
+}).refine((data) => data.endDate > data.startDate, {
+  message: 'endDate must be after startDate',
+  path: ['endDate'],
+});
+
 export type CreateRoomInput = z.infer<typeof CreateRoomSchema>;
 export type UpdateRoomInput = z.infer<typeof UpdateRoomSchema>;
 export type GetRoomsQueryInput = z.infer<typeof GetRoomsQuerySchema>;
+export type RoomAvailabilityQueryInput = z.infer<typeof RoomAvailabilityQuerySchema>;
 
 

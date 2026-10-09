@@ -1,4 +1,6 @@
-import { AnalyticsRepository } from '../repositories/analytics.repository';
+import { BadRequestError } from '../utils/errors';
+import { AnalyticsRepository, AnalyticsRange } from '../repositories/analytics.repository';
+import { overallUtilizationPercent, selectPeakHour } from '../domain/analytics.math';
 
 export class AnalyticsService {
   private analyticsRepository: AnalyticsRepository;
@@ -7,101 +9,86 @@ export class AnalyticsService {
     this.analyticsRepository = new AnalyticsRepository();
   }
 
-  /**
-   * Get dashboard analytics with all metrics
-   */
+  parseRange(startDate?: string, endDate?: string): AnalyticsRange {
+    if (!startDate || !endDate) {
+      throw new BadRequestError('startDate and endDate are required');
+    }
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      throw new BadRequestError('endDate must be after startDate');
+    }
+    return { start, end };
+  }
+
   async getDashboardAnalytics(startDate?: string, endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-
-    return this.analyticsRepository.getDashboardAnalytics(start, end);
-  }
-
-  /**
-   * Get total bookings count
-   */
-  async getTotalBookings(startDate?: string, endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-
-    const count = await this.analyticsRepository.getTotalBookings(start, end);
-
-    return {
-      totalBookings: count,
-      period: {
-        startDate,
-        endDate,
-      },
-    };
-  }
-
-  /**
-   * Get room utilization data
-   */
-  async getRoomUtilization(startDate?: string, endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-
-    const utilization = await this.analyticsRepository.getRoomUtilization(start, end);
-
-    // Calculate overall utilization average
-    const totalUtilization = utilization.reduce((sum, room) => sum + room.utilizationRate, 0);
-    const averageUtilization = utilization.length > 0 
-      ? parseFloat((totalUtilization / utilization.length).toFixed(2)) 
-      : 0;
-
-    return {
-      averageUtilization,
-      roomUtilization: utilization,
-      period: {
-        startDate,
-        endDate,
-      },
-    };
-  }
-
-  /**
-   * Get peak booking hours
-   */
-  async getPeakHours(startDate?: string, endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
-
-    const hourlyData = await this.analyticsRepository.getPeakHours(start, end);
-
-    // Find peak hour
-    const peakHourData = hourlyData.reduce((max, hour) => 
-      hour.count > max.count ? hour : max, 
-      hourlyData[0]
+    const range = this.parseRange(startDate, endDate);
+    const raw = await this.analyticsRepository.getDashboardAnalytics(range);
+    const peak = selectPeakHour(raw.hourlyBreakdown);
+    const averageUtilization = overallUtilizationPercent(
+      raw.roomUtilization.map((room) => ({
+        bookedHours: room.totalBookedHours,
+        availableHours: room.availableHours,
+      })),
     );
 
     return {
-      peakHour: peakHourData?.hour || 0,
-      peakHourLabel: peakHourData?.label || '0:00',
-      peakHourBookings: peakHourData?.count || 0,
-      hourlyBreakdown: hourlyData,
-      period: {
-        startDate,
-        endDate,
-      },
+      ...raw,
+      averageUtilization,
+      peakHour: peak?.hour ?? null,
+      peakHourLabel: peak?.label ?? null,
+      peakHourBookings: peak?.count ?? 0,
+      period: { startDate, endDate, timeZone: 'UTC' },
     };
   }
 
-  /**
-   * Get most booked rooms
-   */
-  async getMostBookedRooms(limit?: number, startDate?: string, endDate?: string) {
-    const start = startDate ? new Date(startDate) : undefined;
-    const end = endDate ? new Date(endDate) : undefined;
+  async getTotalBookings(startDate?: string, endDate?: string) {
+    const range = this.parseRange(startDate, endDate);
+    const count = await this.analyticsRepository.getTotalBookings(range);
+    return {
+      totalBookings: count,
+      period: { startDate, endDate, timeZone: 'UTC' },
+    };
+  }
 
-    const rooms = await this.analyticsRepository.getMostBookedRooms(limit || 10, start, end);
+  async getRoomUtilization(startDate?: string, endDate?: string) {
+    const range = this.parseRange(startDate, endDate);
+    const roomUtilization = await this.analyticsRepository.getRoomUtilization(range);
+    const averageUtilization = overallUtilizationPercent(
+      roomUtilization.map((room) => ({
+        bookedHours: room.totalBookedHours,
+        availableHours: room.availableHours,
+      })),
+    );
 
     return {
+      averageUtilization,
+      roomUtilization,
+      period: { startDate, endDate, timeZone: 'UTC' },
+    };
+  }
+
+  async getPeakHours(startDate?: string, endDate?: string) {
+    const range = this.parseRange(startDate, endDate);
+    const hourlyBreakdown = await this.analyticsRepository.getPeakHours(range);
+    const peak = selectPeakHour(hourlyBreakdown);
+
+    return {
+      peakHour: peak?.hour ?? null,
+      peakHourLabel: peak?.label ?? null,
+      peakHourBookings: peak?.count ?? 0,
+      hourlyBreakdown,
+      period: { startDate, endDate, timeZone: 'UTC' },
+    };
+  }
+
+  async getMostBookedRooms(limit?: number, startDate?: string, endDate?: string) {
+    const range = this.parseRange(startDate, endDate);
+    const rooms = await this.analyticsRepository.getMostBookedRooms(limit || 10, range);
+    return {
       mostBookedRooms: rooms,
-      period: {
-        startDate,
-        endDate,
-      },
+      ranking: 'booking_count' as const,
+      period: { startDate, endDate, timeZone: 'UTC' },
     };
   }
 }

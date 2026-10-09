@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useLogout } from '@/features/auth/hooks';
 
 interface UserMenuProps {
   user: {
@@ -23,9 +24,10 @@ interface UserMenuProps {
 
 export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
+  const { logout } = useLogout();
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    logout();
     window.location.href = '/login';
   };
 

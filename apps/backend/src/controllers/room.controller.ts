@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { RoomService } from '../services/room.service';
 import { ResponseUtil } from '../utils/response';
-import { GetRoomsQueryInput } from '../validators/room.validator';
+import { GetRoomsQueryInput, RoomAvailabilityQueryInput } from '../validators/room.validator';
 
 const roomService = new RoomService();
 
@@ -52,6 +52,17 @@ export class RoomController {
       const { id } = req.params;
       await roomService.deleteRoom(id);
       ResponseUtil.success(res, null, 'Room deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const query = req.query as unknown as RoomAvailabilityQueryInput;
+      const result = await roomService.getAvailability(id, query);
+      ResponseUtil.success(res, result, 'Room availability retrieved successfully');
     } catch (error) {
       next(error);
     }

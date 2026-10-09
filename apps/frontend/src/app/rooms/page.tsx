@@ -19,9 +19,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useRooms } from '@/features/rooms/hooks';
+import { useDeleteRoom, useRooms, useUpdateRoom } from '@/features/rooms/hooks';
 import { useCurrentUser } from '@/features/auth/hooks';
 import { useSidebar } from '@/hooks/use-sidebar';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',
@@ -35,16 +45,26 @@ export default function RoomsPage() {
   const { isCollapsed, toggleSidebar } = useSidebar();
   const [user, setUser] = useState<any>(null);
 
-  // Filters state
   const [search, setSearch] = useState('');
   const [building, setBuilding] = useState('');
+  const [floor, setFloor] = useState('');
+  const [minCapacity, setMinCapacity] = useState('');
+  const [equipment, setEquipment] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<{ roomId: string; name: string } | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const limit = 6;
+
+  const deleteRoom = useDeleteRoom();
+  const updateRoom = useUpdateRoom();
 
   const { data, isLoading } = useRooms({
     search: search || undefined,
     building: building || undefined,
+    floor: floor ? Number(floor) : undefined,
+    minCapacity: minCapacity ? Number(minCapacity) : undefined,
+    equipment: equipment || undefined,
     status: status || undefined,
     page,
     limit,
@@ -101,26 +121,70 @@ export default function RoomsPage() {
               )}
             </div>
 
-            {/* Filters & Search */}
-            <div className="flex flex-col gap-4 md:flex-row">
-              <div className="relative flex-1">
+            {actionError && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">{actionError}</div>
+            )}
+
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+              <div className="relative lg:col-span-2">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="Search rooms..."
                   className="pl-8"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
                 />
               </div>
+              <Input
+                placeholder="Building"
+                value={building}
+                onChange={(e) => {
+                  setBuilding(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                type="number"
+                placeholder="Floor"
+                value={floor}
+                onChange={(e) => {
+                  setFloor(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                type="number"
+                min={1}
+                placeholder="Min capacity"
+                value={minCapacity}
+                onChange={(e) => {
+                  setMinCapacity(e.target.value);
+                  setPage(1);
+                }}
+              />
+              <Input
+                placeholder="Equipment"
+                value={equipment}
+                onChange={(e) => {
+                  setEquipment(e.target.value);
+                  setPage(1);
+                }}
+              />
               <select
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm md:w-48"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm lg:col-span-6 md:col-span-2"
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  setStatus(e.target.value);
+                  setPage(1);
+                }}
               >
                 <option value="">All Statuses</option>
                 <option value="ACTIVE">Active</option>
-                <option value="INACTIVE">Inactive</option>
+                <option value="INACTIVE">Inactive (disabled)</option>
                 <option value="MAINTENANCE">Maintenance</option>
               </select>
             </div>
@@ -146,7 +210,7 @@ export default function RoomsPage() {
                     </div>
                     <h3 className="mt-4 text-lg font-semibold">No rooms found</h3>
                     <p className="text-sm text-muted-foreground">
-                      {search || status
+                      {search || status || building || floor || minCapacity || equipment
                         ? 'Try adjusting your search or filters'
                         : 'No rooms are available yet'}
                     </p>
@@ -204,15 +268,59 @@ export default function RoomsPage() {
                           </div>
 
                           {user.role === 'ADMIN' && (
-                            <div className="mt-4 flex gap-2">
-                              <Button variant="ghost" size="sm" className="flex-1">
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button variant="ghost" size="sm" className="flex-1" asChild>
+                                <Link href={`/rooms/${room.roomId}/edit`}>
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit
+                                </Link>
                               </Button>
+                              {room.status === 'ACTIVE' ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={async () => {
+                                    setActionError(null);
+                                    try {
+                                      await updateRoom.mutateAsync({
+                                        id: room.roomId,
+                                        data: { status: 'INACTIVE' },
+                                      });
+                                    } catch (err: any) {
+                                      setActionError(
+                                        err?.response?.data?.message || 'Could not disable room',
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Disable
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={async () => {
+                                    setActionError(null);
+                                    try {
+                                      await updateRoom.mutateAsync({
+                                        id: room.roomId,
+                                        data: { status: 'ACTIVE' },
+                                      });
+                                    } catch (err: any) {
+                                      setActionError(
+                                        err?.response?.data?.message || 'Could not enable room',
+                                      );
+                                    }
+                                  }}
+                                >
+                                  Enable
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 className="flex-1 text-destructive"
+                                onClick={() => setDeleteTarget({ roomId: room.roomId, name: room.name })}
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete
@@ -258,6 +366,41 @@ export default function RoomsPage() {
           </div>
         </main>
       </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deleting a room also permanently removes its booking history (database cascade).
+              Rooms with upcoming or active bookings cannot be deleted — disable the room instead
+              so existing reservations stay intact.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!deleteTarget) return;
+                setActionError(null);
+                try {
+                  await deleteRoom.mutateAsync(deleteTarget.roomId);
+                  setDeleteTarget(null);
+                } catch (err: any) {
+                  setActionError(
+                    err?.response?.data?.message ||
+                      'Could not delete this room. Disable it if it has upcoming bookings.',
+                  );
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete room
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

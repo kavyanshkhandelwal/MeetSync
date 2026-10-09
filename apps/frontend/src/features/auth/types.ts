@@ -8,5 +8,9 @@ export type RegisterInput = {
   lastName: string;
   email: string;
   password: string;
-  role?: 'ADMIN' | 'EMPLOYEE';
+};
+
+export type UpdateProfileInput = {
+  firstName: string;
+  lastName: string;
 };

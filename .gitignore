@@ -37,3 +37,13 @@ pnpm-debug.log*
 
 # Turborepo
 .turbo/
+
+# Local tooling (portable Redis)
+.tools/
+
+# Tests
+coverage/
+**/test-results/
+**/playwright-report/
+**/blob-report/
+

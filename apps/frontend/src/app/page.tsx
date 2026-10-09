@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Calendar,
   CalendarDays,
   DoorOpen,
-  Users,
   TrendingUp,
 } from 'lucide-react';
 import { Header } from '@/components/dashboard/Header';
@@ -15,6 +14,9 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { useCurrentUser } from '@/features/auth/hooks';
 import { useRooms } from '@/features/rooms/hooks';
 import { useBookings } from '@/features/bookings/hooks';
+import { useDashboardAnalytics } from '@/features/analytics/hooks';
+import { analyticsRangeForPreset } from '@/features/analytics/range';
+import { analyticsErrorMessage, occupancyCard } from '@/features/analytics/display';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useSidebar } from '@/hooks/use-sidebar';
 
@@ -24,8 +26,15 @@ export default function DashboardPage() {
   const { data: rooms, isLoading: roomsLoading } = useRooms();
   const { data: bookings, isLoading: bookingsLoading } = useBookings();
   const { isCollapsed, toggleSidebar } = useSidebar();
+  const monthRange = useMemo(() => analyticsRangeForPreset('month'), []);
 
   const [user, setUser] = useState<any>(null);
+  const {
+    data: analytics,
+    isLoading: analyticsLoading,
+    isError: analyticsError,
+    error: analyticsErr,
+  } = useDashboardAnalytics(monthRange, { enabled: user?.role === 'ADMIN' });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -48,8 +57,15 @@ export default function DashboardPage() {
     );
   }
 
-  const totalRooms = rooms?.meta.total || 0;
   const totalBookings = bookings?.meta.total || 0;
+  const occupancy = occupancyCard({
+    loading: analyticsLoading,
+    error: analyticsError,
+    averageUtilization: analytics?.averageUtilization,
+    totalActiveRooms: analytics?.totalActiveRooms,
+    periodLabel: 'This month',
+  });
+  const analyticsMessage = analyticsError ? analyticsErrorMessage(analyticsErr) : null;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -64,24 +80,32 @@ export default function DashboardPage() {
         <main className="flex-1 overflow-y-auto p-6">
           <div className="space-y-8">
             {user.role === 'ADMIN' ? (
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <StatCard
-                  title="Total Rooms"
-                  value={totalRooms}
-                  icon={<DoorOpen className="h-4 w-4" />}
-                />
-                <StatCard
-                  title="Total Bookings"
-                  value={totalBookings}
-                  icon={<Calendar className="h-4 w-4" />}
-                />
-                <StatCard
-                  title="Occupancy Rate"
-                  value="68%"
-                  description="+12% from last month"
-                  icon={<TrendingUp className="h-4 w-4" />}
-                />
-              </div>
+              <>
+                {analyticsMessage && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {analyticsMessage}
+                  </div>
+                )}
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  <StatCard
+                    title="Total Rooms"
+                    value={analyticsLoading || analyticsError ? '—' : analytics?.totalRooms ?? 0}
+                    icon={<DoorOpen className="h-4 w-4" />}
+                  />
+                  <StatCard
+                    title="Total Bookings"
+                    value={analyticsLoading || analyticsError ? '—' : analytics?.totalBookings ?? 0}
+                    description="This month · PENDING, CONFIRMED, COMPLETED"
+                    icon={<Calendar className="h-4 w-4" />}
+                  />
+                  <StatCard
+                    title="Utilization"
+                    value={occupancy.value}
+                    description={occupancy.description}
+                    icon={<TrendingUp className="h-4 w-4" />}
+                  />
+                </div>
+              </>
             ) : (
               <div className="grid gap-6 md:grid-cols-2">
                 <StatCard

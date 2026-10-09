@@ -10,6 +10,17 @@ export class AuditLogService {
     this.setupEventListeners();
   }
 
+  async list(skip = 0, take = 50) {
+    const logs = await this.auditLogRepository.findAll(skip, take);
+    return logs.map((log: any) => {
+      if (log.user?.passwordHash) {
+        const { passwordHash, ...user } = log.user;
+        return { ...log, user };
+      }
+      return log;
+    });
+  }
+
   private setupEventListeners(): void {
     // Booking events
     appEventEmitter.on(EventType.BOOKING_CREATED, async (data: BookingEventData) => {
@@ -91,3 +102,5 @@ export class AuditLogService {
     }
   }
 }
+
+export const auditLogService = new AuditLogService();

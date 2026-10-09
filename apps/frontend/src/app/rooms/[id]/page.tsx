@@ -17,8 +17,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { BookingModal } from '@/components/bookings/BookingModal';
+import { AvailabilityPanel } from '@/components/rooms/availability-panel';
 import { useRoom } from '@/features/rooms/hooks';
 import { useCurrentUser } from '@/features/auth/hooks';
+import { useSidebar } from '@/hooks/use-sidebar';
+import Link from 'next/link';
 
 const statusColors: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-800',
@@ -33,6 +36,7 @@ export default function RoomDetailPage() {
 
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const { data: room, isLoading: roomLoading } = useRoom(roomId);
+  const { isCollapsed, toggleSidebar } = useSidebar();
 
   const [user, setUser] = useState<any>(null);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -61,7 +65,12 @@ export default function RoomDetailPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <div className="flex flex-1">
-        <Sidebar userRole={user.role} className="hidden w-64 flex-col md:flex" />
+        <Sidebar
+          userRole={user.role}
+          isCollapsed={isCollapsed}
+          onToggle={toggleSidebar}
+          className="hidden flex-col md:flex"
+        />
         <div className="flex flex-1 flex-col">
           <Header user={user} />
           <main className="flex-1 p-6">
@@ -140,36 +149,12 @@ export default function RoomDetailPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Availability Calendar Placeholder */}
                   <Card>
                     <CardHeader>
                       <CardTitle>Availability</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-7 gap-1 text-center">
-                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(
-                          (day) => (
-                            <div
-                              key={day}
-                              className="text-xs font-medium text-muted-foreground py-2"
-                            >
-                              {day}
-                            </div>
-                          )
-                        )}
-                        {Array.from({ length: 35 }).map((_, i) => (
-                          <div
-                            key={i}
-                            className={`h-12 rounded border flex items-center justify-center text-xs
-                              ${i % 7 < 5 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200'}`}
-                          >
-                            {i + 1}
-                          </div>
-                        ))}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Green days indicate available dates
-                      </p>
+                      <AvailabilityPanel roomId={roomId} roomStatus={room.status} />
                     </CardContent>
                   </Card>
                 </div>
@@ -181,6 +166,11 @@ export default function RoomDetailPage() {
                       <CardTitle>Book This Room</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
+                      {user.role === 'ADMIN' && (
+                        <Button variant="outline" className="w-full" asChild>
+                          <Link href={`/rooms/${roomId}/edit`}>Edit room</Link>
+                        </Button>
+                      )}
                       <p className="text-sm text-muted-foreground">
                         Reserve this conference room for your meeting
                       </p>

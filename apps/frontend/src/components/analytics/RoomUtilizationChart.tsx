@@ -12,6 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { mapRoomUtilizationChartData } from '@/features/analytics/display';
 import { RoomUtilization } from '@/features/analytics/types';
 
 interface RoomUtilizationChartProps {
@@ -21,11 +22,7 @@ interface RoomUtilizationChartProps {
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 export function RoomUtilizationChart({ roomUtilization }: RoomUtilizationChartProps) {
-  const data = roomUtilization.map((room, index) => ({
-    name: room.roomName,
-    utilization: room.utilizationRate,
-    bookings: room.totalBookings,
-  }));
+  const data = mapRoomUtilizationChartData(roomUtilization);
 
   return (
     <Card className="col-span-1 lg:col-span-2">
@@ -33,6 +30,11 @@ export function RoomUtilizationChart({ roomUtilization }: RoomUtilizationChartPr
         <CardTitle>Room Utilization (%)</CardTitle>
       </CardHeader>
       <CardContent>
+        {data.length === 0 ? (
+          <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+            No rooms to report for this date range.
+          </div>
+        ) : (
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data}>
@@ -68,6 +70,7 @@ export function RoomUtilizationChart({ roomUtilization }: RoomUtilizationChartPr
             </BarChart>
           </ResponsiveContainer>
         </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -6,6 +6,20 @@ import { CreateBookingInput, UpdateBookingInput, GetBookingsQueryInput } from '.
 import { PaginatedResult } from '../repositories/room.repository';
 import socketService from './socket.service';
 import { appEventEmitter, EventType } from './eventEmitter.service';
+import {
+  assertBookingStatusTransition,
+  isTerminalBookingStatus,
+} from '../domain/bookingStatus.machine';
+import { reminderService } from './reminder.service';
+import { logger } from '../utils/logger';
+
+async function notifyReminder(label: string, work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (err) {
+    logger.error(`${label} failed:`, err instanceof Error ? err.message : err);
+  }
+}
 
 export class BookingService {
   private bookingRepository: BookingRepository;
@@ -82,7 +96,8 @@ export class BookingService {
       
       // Emit socket event
       socketService.emitBookingCreated(booking);
-      
+      await notifyReminder('Reminder schedule', () => reminderService.schedule(booking));
+
       return booking;
     } catch (error) {
       if (error instanceof Error && error.message.includes('Room is already booked')) {
@@ -107,8 +122,10 @@ export class BookingService {
       throw new ForbiddenError('You are not authorized to update this booking');
     }
 
-    // Check if booking can be updated (must not be completed or cancelled)
-    if (booking.status === BookingStatus.COMPLETED || booking.status === BookingStatus.CANCELLED) {
+    const changingNonStatusFields = Boolean(
+      input.startTime || input.endTime || input.purpose || input.roomId,
+    );
+    if (isTerminalBookingStatus(booking.status) && changingNonStatusFields) {
       throw new BadRequestError('Cannot update a completed or cancelled booking');
     }
 
@@ -128,11 +145,7 @@ export class BookingService {
     if (input.purpose) updateData.purpose = input.purpose;
     if (input.roomId) updateData.room = { connect: { roomId: input.roomId } };
     if (input.status) {
-      if (userRole !== Role.ADMIN) {
-        if (input.status !== BookingStatus.CANCELLED) {
-          throw new ForbiddenError('Only admins can update booking status');
-        }
-      }
+      assertBookingStatusTransition(booking.status, input.status, userRole);
       updateData.status = input.status;
     }
 
@@ -168,7 +181,14 @@ export class BookingService {
     
     // Emit socket event
     socketService.emitBookingUpdated(updatedBooking);
-    
+    if (input.status === BookingStatus.CANCELLED) {
+      await notifyReminder('Reminder cancel', () => reminderService.cancel(updatedBooking));
+    } else if (input.status === BookingStatus.COMPLETED) {
+      await notifyReminder('Reminder unschedule', () => reminderService.unschedule(updatedBooking));
+    } else if (input.startTime || input.endTime) {
+      await notifyReminder('Reminder reschedule', () => reminderService.reschedule(updatedBooking));
+    }
+
     return updatedBooking;
   }
 
@@ -191,6 +211,7 @@ export class BookingService {
     }
 
     await this.bookingRepository.delete(id);
+    await notifyReminder('Reminder unschedule', () => reminderService.unschedule(booking));
     
     // Emit socket event
     socketService.emitBookingCancelled(booking);
@@ -210,9 +231,7 @@ export class BookingService {
       throw new ForbiddenError('You are not authorized to cancel this booking');
     }
 
-    if (booking.status === BookingStatus.COMPLETED || booking.status === BookingStatus.CANCELLED) {
-      throw new BadRequestError('Cannot cancel this booking');
-    }
+    assertBookingStatusTransition(booking.status, BookingStatus.CANCELLED, userRole);
 
     const cancelledBooking = await this.bookingRepository.update(id, { status: BookingStatus.CANCELLED });
     
@@ -224,6 +243,7 @@ export class BookingService {
     });
     // Emit socket event
     socketService.emitBookingCancelled(cancelledBooking);
+    await notifyReminder('Reminder cancel', () => reminderService.cancel(cancelledBooking));
     
     return cancelledBooking;
   }

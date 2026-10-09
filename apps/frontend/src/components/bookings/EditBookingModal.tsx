@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,8 +16,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useUpdateBooking } from '@/features/bookings/hooks';
-import { useRoom } from '@/features/rooms/hooks';
+import { useCancelBooking, useUpdateBooking } from '@/features/bookings/hooks';
+import { handleApiError } from '@/lib/handle-api-error';
+import { datetimeLocalFromIso, toOffsetIso } from '@/lib/datetime';
 import type { Booking } from '@/types';
 
 const editBookingSchema = z.object({
@@ -54,30 +55,37 @@ interface EditBookingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   booking: Booking | null;
+  allowCancel?: boolean;
+  onCancelled?: () => void;
 }
 
 export function EditBookingModal({
   open,
   onOpenChange,
   booking,
+  allowCancel = false,
+  onCancelled,
 }: EditBookingModalProps) {
   const updateBooking = useUpdateBooking();
-  
+  const cancelBooking = useCancelBooking();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<EditBookingFormValues>({
     resolver: zodResolver(editBookingSchema),
   });
 
-  // Reset form when booking changes
   useEffect(() => {
     if (booking) {
+      setErrorMessage(null);
       reset({
-        startTime: booking.startTime.slice(0, 16),
-        endTime: booking.endTime.slice(0, 16),
+        startTime: datetimeLocalFromIso(booking.startTime),
+        endTime: datetimeLocalFromIso(booking.endTime),
         purpose: booking.purpose,
       });
     }
@@ -85,32 +93,12 @@ export function EditBookingModal({
 
   const onSubmit = async (data: EditBookingFormValues) => {
     if (!booking) return;
+    setErrorMessage(null);
     try {
-      // Convert datetime-local strings to ISO-8601 with timezone offset
-      const formatDateTime = (dateTimeStr: string) => {
-        if (!dateTimeStr) return '';
-        const date = new Date(dateTimeStr);
-        // Get timezone offset in minutes
-        const offset = date.getTimezoneOffset();
-        // Convert to hours and minutes
-        const offsetHours = Math.abs(Math.floor(offset / 60));
-        const offsetMinutes = Math.abs(offset % 60);
-        const offsetSign = offset <= 0 ? '+' : '-';
-        // Format: YYYY-MM-DDTHH:mm:ss+HH:mm
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        const seconds = String(date.getSeconds()).padStart(2, '0');
-        const offsetStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
-        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${offsetStr}`;
-      };
-
       const payload = {
         ...data,
-        startTime: formatDateTime(data.startTime),
-        endTime: formatDateTime(data.endTime),
+        startTime: toOffsetIso(new Date(data.startTime)),
+        endTime: toOffsetIso(new Date(data.endTime)),
       };
 
       await updateBooking.mutateAsync({
@@ -119,7 +107,20 @@ export function EditBookingModal({
       });
       onOpenChange(false);
     } catch (err) {
-      console.error('Error updating booking:', err);
+      handleApiError(err, setError, setErrorMessage);
+    }
+  };
+
+  const onCancelBooking = async () => {
+    if (!booking) return;
+    if (!confirm('Cancel this booking?')) return;
+    setErrorMessage(null);
+    try {
+      await cancelBooking.mutateAsync(booking.bookingId);
+      onCancelled?.();
+      onOpenChange(false);
+    } catch (err) {
+      handleApiError(err, setError, setErrorMessage);
     }
   };
 
@@ -136,6 +137,9 @@ export function EditBookingModal({
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
           <div className="grid gap-4 py-4">
+            {errorMessage && (
+              <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">{errorMessage}</div>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="startTime">Start Time</Label>
@@ -174,12 +178,22 @@ export function EditBookingModal({
             </div>
           </div>
           <DialogFooter>
+            {allowCancel && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={onCancelBooking}
+                disabled={cancelBooking.isPending}
+              >
+                Cancel booking
+              </Button>
+            )}
             <Button
               type="button"
               variant="ghost"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              Close
             </Button>
             <Button
               type="submit"

@@ -230,6 +230,35 @@ import { BaseRepository } from './base.repository';
 import { GetBookingsQueryInput } from '../validators/booking.validator';
 import { PaginatedResult } from './room.repository';
 
+/** Interval overlap: booking.start < requestedEnd AND booking.end > requestedStart */
+export function bookingRangeOverlap(
+  startDate?: Date,
+  endDate?: Date,
+): Prisma.BookingWhereInput[] {
+  const andConditions: Prisma.BookingWhereInput[] = [];
+  if (endDate) {
+    andConditions.push({ startTime: { lt: new Date(endDate) } });
+  }
+  if (startDate) {
+    andConditions.push({ endTime: { gt: new Date(startDate) } });
+  }
+  return andConditions;
+}
+
+/** Canonical occupancy: PENDING and CONFIRMED block; CANCELLED and COMPLETED do not. */
+export const OCCUPYING_STATUSES: BookingStatus[] = [
+  BookingStatus.PENDING,
+  BookingStatus.CONFIRMED,
+];
+
+export function occupyingStatusFilter(): Prisma.EnumBookingStatusFilter {
+  return { in: OCCUPYING_STATUSES };
+}
+
+export function isOccupyingStatus(status: BookingStatus): boolean {
+  return OCCUPYING_STATUSES.includes(status);
+}
+
 export class BookingRepository extends BaseRepository<Booking> {
   async findAll(): Promise<any[]> {
     return prisma.booking.findMany({
@@ -271,25 +300,7 @@ export class BookingRepository extends BaseRepository<Booking> {
     }
 
     if (startDate || endDate) {
-      const andConditions: Prisma.BookingWhereInput[] = [];
-
-      if (startDate) {
-        andConditions.push({
-          startTime: {
-            gte: new Date(startDate),
-          },
-        });
-      }
-
-      if (endDate) {
-        andConditions.push({
-          endTime: {
-            lte: new Date(endDate),
-          },
-        });
-      }
-
-      where.AND = andConditions;
+      where.AND = bookingRangeOverlap(startDate, endDate);
     }
 
     const skip = (page - 1) * limit;
@@ -384,6 +395,34 @@ export class BookingRepository extends BaseRepository<Booking> {
     });
   }
 
+  async findOccupyingInRange(roomId: string, startDate: Date, endDate: Date) {
+    return prisma.booking.findMany({
+      where: {
+        roomId,
+        status: occupyingStatusFilter(),
+        AND: bookingRangeOverlap(startDate, endDate),
+      },
+      select: {
+        bookingId: true,
+        startTime: true,
+        endTime: true,
+        status: true,
+        purpose: true,
+      },
+      orderBy: { startTime: 'asc' },
+    });
+  }
+
+  async countBlockingFutureBookings(roomId: string, from: Date = new Date()): Promise<number> {
+    return prisma.booking.count({
+      where: {
+        roomId,
+        status: occupyingStatusFilter(),
+        endTime: { gt: from },
+      },
+    });
+  }
+
   /**
   
   * Checks whether a room already has a booking
@@ -399,26 +438,13 @@ export class BookingRepository extends BaseRepository<Booking> {
     return tx.booking.findFirst({
       where: {
         roomId: roomId,
-        status: {
-          not: BookingStatus.CANCELLED,
-        },
+        status: occupyingStatusFilter(),
         ...(excludeBookingId && {
           bookingId: {
             not: excludeBookingId,
           },
         }),
-        AND: [
-          {
-            startTime: {
-              lt: endTime,
-            },
-          },
-          {
-            endTime: {
-              gt: startTime,
-            },
-          },
-        ],
+        AND: bookingRangeOverlap(startTime, endTime),
       },
     });
   }
@@ -434,6 +460,8 @@ export class BookingRepository extends BaseRepository<Booking> {
     endTime: Date,
   ) {
     return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "roomId" FROM "Room" WHERE "roomId" = ${roomId} FOR UPDATE`;
+
       const conflict =
         await this.checkForConflictingBookingInTransaction(
           tx,
@@ -470,6 +498,8 @@ export class BookingRepository extends BaseRepository<Booking> {
     endTime: Date,
   ) {
     return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "roomId" FROM "Room" WHERE "roomId" = ${roomId} FOR UPDATE`;
+
       const conflict =
         await this.checkForConflictingBookingInTransaction(
           tx,

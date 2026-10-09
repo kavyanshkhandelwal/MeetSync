@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { env } from '../config';
+import { disconnectSocket } from './socket';
 
 const apiClient = axios.create({
   baseURL: env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api',
@@ -26,9 +27,9 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired - clear storage and redirect to login
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
+      disconnectSocket();
       window.location.href = '/login';
     }
     return Promise.reject(error);
